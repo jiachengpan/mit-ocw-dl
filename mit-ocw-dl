@@ -1,0 +1,79 @@
+#! /usr/bin/env python2.7
+
+import urlparse
+import urllib2
+import re
+import os
+import youtube_dl
+
+from bs4 import BeautifulSoup
+from ast import literal_eval
+
+USE_ARCHIVE = False
+
+def get_lecture(name, url):
+    global USE_ARCHIVE
+    response = urllib2.urlopen(url)
+    soup = BeautifulSoup(response.read(), 'html.parser')
+    ocw_embed_chapter_media = soup.find('script', string=re.compile('^ocw_embed_chapter_media')).text
+    media_info = literal_eval(ocw_embed_chapter_media[len('ocw_embed_chapter_media'):])
+
+    youtube_link = media_info[1]
+    srt_link = media_info[-1]
+
+    if USE_ARCHIVE:
+        raise Exception('not implemented')
+    else:
+        ydl_opts = {
+                'format': 'worst',
+                'restrictfilenames': True,
+                'writesubtitles': True,
+                'outtmpl': name + '.%(ext)s',
+                }
+        with youtube_dl.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([youtube_link])
+
+def get_videos(url):
+    hostname = '%s://%s' % urlparse.urlparse(url)[:2]
+    response = urllib2.urlopen(url)
+    soup = BeautifulSoup(response.read(), 'html.parser')
+    course_name = soup.find('h1', attrs={'class': 'title'}).text
+
+    if not os.path.isdir(course_name):
+        os.mkdir(course_name)
+    os.chdir(course_name)
+
+    video_links = [l['href'] for l in soup.find_all('a', href=re.compile('video-lectures$'))]
+    if not video_links:
+        raise Exception('No video in course %s' % course_name)
+
+    video_link = hostname + video_links[0]
+    print "loading videos: " + video_link
+    response = urllib2.urlopen(video_link)
+    soup = BeautifulSoup(response.read(), 'html.parser')
+
+    media_links = {'%d - %s' % (idx, l.text): hostname + l['href'] for idx, l in \
+            enumerate(soup.find_all('a', attrs={'class': 'medialink'}))}
+
+    for lecture_name, lecture_link in media_links.items():
+        get_lecture(lecture_name, lecture_link)
+
+
+#--------------------------------------------------------------------------------
+# top-level function
+
+def download(args):
+    for url in args.url:
+        get_videos(url)
+
+if __name__ == '__main__':
+    import argparse
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument('url', nargs='+', help='Course URL, such as "http://ocw.mit.edu/courses/mathematics/18-085-computational-science-and-engineering-i-fall-2008/"')
+    parser.add_argument('--archive', '-a', action='store_true', default=False, help='Download from archive, default off')
+
+    args = parser.parse_args()
+    USE_ARCHIVE = args.archive
+    download(args)
+
