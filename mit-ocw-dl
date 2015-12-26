@@ -9,10 +9,13 @@ import youtube_dl
 from bs4 import BeautifulSoup
 from ast import literal_eval
 
-USE_ARCHIVE = False
+ARGS = None
+
+def postprocess(data):
+    if data['status'] == 'finished':
+        os.system(ARGS.postprocess)
 
 def get_lecture(name, url):
-    global USE_ARCHIVE
     response = urllib2.urlopen(url)
     soup = BeautifulSoup(response.read(), 'html.parser')
     ocw_embed_chapter_media = soup.find('script', string=re.compile('^ocw_embed_chapter_media')).text
@@ -21,14 +24,15 @@ def get_lecture(name, url):
     youtube_link = media_info[1]
     srt_link = media_info[-1]
 
-    if USE_ARCHIVE:
+    if ARGS.archive:
         raise Exception('not implemented')
     else:
         ydl_opts = {
-                'format': 'worst',
+                'format': ARGS.format,
                 'restrictfilenames': True,
                 'writesubtitles': True,
                 'outtmpl': name + '.%(ext)s',
+                'progress_hooks': [postprocess],
                 }
         with youtube_dl.YoutubeDL(ydl_opts) as ydl:
             ydl.download([youtube_link])
@@ -52,28 +56,29 @@ def get_videos(url):
     response = urllib2.urlopen(video_link)
     soup = BeautifulSoup(response.read(), 'html.parser')
 
-    media_links = {'%d - %s' % (idx, l.text): hostname + l['href'] for idx, l in \
-            enumerate(soup.find_all('a', attrs={'class': 'medialink'}))}
+    media_links = (('%d - %s' % (idx, l.text), hostname + l['href']) for idx, l in \
+            enumerate(soup.find_all('a', attrs={'class': 'medialink'})))
 
-    for lecture_name, lecture_link in media_links.items():
+    for lecture_name, lecture_link in media_links:
         get_lecture(lecture_name, lecture_link)
 
 
 #--------------------------------------------------------------------------------
 # top-level function
 
-def download(args):
-    for url in args.url:
+def download():
+    for url in ARGS.url:
         get_videos(url)
 
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('url', nargs='+', help='Course URL, such as "http://ocw.mit.edu/courses/mathematics/18-085-computational-science-and-engineering-i-fall-2008/"')
-    parser.add_argument('--archive', '-a', action='store_true', default=False, help='Download from archive, default off')
+    parser.add_argument('url',                  nargs='+', help='Course URL, such as "http://ocw.mit.edu/courses/mathematics/18-085-computational-science-and-engineering-i-fall-2008/"')
+    parser.add_argument('--format', '-f',       action='store', default='best', help='Video / audio format, as specified by youtube-dl. Default is "best".')
+    parser.add_argument('--postprocess', '-p',  action='store', default='', help='Post-processing command called after each file is downloaded. Default nothing.')
+    parser.add_argument('--archive', '-a',      action='store_true', default=False, help='Download from archive, default off')
 
-    args = parser.parse_args()
-    USE_ARCHIVE = args.archive
-    download(args)
+    ARGS = parser.parse_args()
+    download()
 
