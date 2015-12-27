@@ -53,7 +53,7 @@ def crawl_links(hostname, path):
         if not href.lstrip('/').startswith(path): return False
 
         tokens = href.strip('/').split('/')
-        if len(tokens) <= 3 or tokens[0] != 'courses': return False
+        if tokens[0] not in ('courses', 'resources'): return False
         return True
 
     video_links = []
@@ -89,7 +89,8 @@ def get_videos(url):
     hostname = '%s://%s' % (parsed_url.scheme, parsed_url.netloc)
 
     tokens = parsed_url.path.strip('/').split('/')
-    if len(tokens) < 3: raise Exception('Invalid course link!')
+    if not len(tokens) >= 3 and not tokens[0] == 'resources':
+        raise Exception('Invalid course link!')
     basepath = '/'.join(tokens[:3])
 
     response = urllib2.urlopen(url)
@@ -102,6 +103,9 @@ def get_videos(url):
 
     video_links, material_links = crawl_links(hostname, basepath)
 
+    print "Videos found: ", len(video_links), "videos."
+    print "Material found: ", len(material_links), "items."
+
     for link in material_links:
         target = '/'.join(link.lstrip('/').split('/')[3:])
         print "Downloading material:", link, '-->', target
@@ -113,7 +117,7 @@ def get_videos(url):
     for idx, lecture in enumerate(video_links):
         name, link = lecture
         name = name.replace('/', ' ')
-        get_lecture('%d - %s' % (idx, name), link)
+        get_lecture('%d - %s' % (idx, name), '/'.join((hostname, link)))
 
 #--------------------------------------------------------------------------------
 # top-level function
